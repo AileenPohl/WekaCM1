@@ -1,7 +1,6 @@
 package weka.filters.supervised.attribute;
 
 
-import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -13,25 +12,17 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Vector;
 import java.util.Map.Entry;
+import java.util.Vector;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonObject;
-
-import net.sf.json.JSONArray;
-import net.sf.json.JSONObject;
 import weka.core.Attribute;
 import weka.core.Capabilities;
 import weka.core.DenseInstance;
 import weka.core.Instance;
 import weka.core.Instances;
 import weka.core.Option;
+import weka.core.OptionHandler;
 import weka.core.Utils;
-import weka.core.converters.CSVSaver;
-import weka.core.converters.JSONLoader;
-import weka.core.json.JSONNode;
 import weka.filters.Filter;
 import weka.filters.SimpleBatchFilter;
 import weka.filters.supervised.instance.StratifiedRemoveFolds;
@@ -40,12 +31,42 @@ import weka.filters.unsupervised.attribute.Remove;
 
 public class CM_1 extends SimpleBatchFilter{
 	
-	private int m_folds = 10;
-	private int toprange = 5;
-	private int bottomrange = 5;
+	/**
+	 * Set the number of folds
+	 * @uml.property  name="m_folds"
+	 */
+	protected int m_folds = 10;
+	/**
+	 * @uml.property  name="m_toprange"
+	 */
+	private int m_toprange;
+	/**
+	 * @uml.property  name="m_bottomrange"
+	 */
+	private int m_bottomrange;
 	
-	private Map<String, Double> RankingSums = new HashMap<String, Double>();
-	private Map<String, Double> rangedRankings = new HashMap<String, Double>();
+	/**
+	 * @uml.property  name="rankingSums"
+	 * @uml.associationEnd  qualifier="get:java.lang.Object java.lang.Double"
+	 */
+	private Map<String, Double> RankingSums;
+	/**
+	 * @uml.property  name="rangedRankings"
+	 * @uml.associationEnd  multiplicity="(0 -1)" elementType="java.lang.Object" qualifier="name:java.lang.String java.lang.Object"
+	 */
+	private Map<String, Double> rangedRankings;
+	
+	
+	public CM_1(){
+		m_folds = 10;
+		m_toprange = 5;
+		m_bottomrange = 5;
+		
+		RankingSums = new HashMap<String, Double>();
+		rangedRankings = new HashMap<String, Double>();
+		
+	}
+
 	
 	public String globalInfo() {
 	
@@ -59,46 +80,124 @@ public class CM_1 extends SimpleBatchFilter{
 	   *
 	   * @return an enumeration of all the available options.
 	   */
-//	  public Enumeration listOptions() {
+	public Enumeration listOptions() {
 //		
-//	    Vector newVector = new Vector(1);
+	    Vector<Option> result;
+    	Enumeration enm;
 //		
-//	    newVector.addElement(new Option("\tSpecify the seed of randomization\n"
-//					    + "\tused to randomize the class\n"
-//					    + "\torder (default: 1)",
-//					    "R", 1, "-R <seed>"));
-//		
-//	    newVector.
-//		addElement(new Option("\tSet number of folds for reduced error\n" +
-//				      "\tpruning. One fold is used as pruning set.\n" +
-//				      "\t(default 3)",
-//				      "N", 1, "-N <number of folds>"));
-//		
-//	    return newVector.elements();
-//	  }
-//	  
-//	  public void setOptions(String[] options) throws Exception {
-//			
-//		    String seedString = Utils.getOption('N', options);
-//		    if (seedString.length() != 0)
-//		    	m_folds = Integer.parseInt(seedString);
-//		    else 
-//		    	m_folds = 1;  
-//		  }
+		result = new Vector<Option>();
 	
+	    enm = super.listOptions();
+	    while (enm.hasMoreElements())
+	      result.addElement((Option) enm.nextElement());
+	
+	    result.addElement(new Option("\tThe number of folds (default: 10).\n",
+	        "-F", 1, "-F <int>"));
+	    
+	    result.addElement(new Option("\tThe number of elements taken from the top for ranking (default: 5).\n",
+		        "-T", 1, "-T <int>"));
+	    
+	    result.addElement(new Option("\tThe number of elements taken from the bottom for ranking (default: 5).\n",
+		        "-B", 1, "-B <int>"));
+	    
+	    return result.elements();
+	  }
+	  
+	public void setOptions(String[] options) throws Exception {
+			
+		 String numberofFoldsString = Utils.getOption('F', options);
+			if (numberofFoldsString.length() != 0) {
+			  setNumberofFolds((Integer.parseInt(numberofFoldsString)));
+			} else {
+				setNumberofFolds(10);
+			} 
+		    
+	    String topRangeString = Utils.getOption('T', options);
+	    if (topRangeString.length() != 0) {
+	      setTopRange((Integer.parseInt(topRangeString)));
+	    } else {
+	    	setTopRange(5);
+	    }
+	    
+	    String bottomRangeString = Utils.getOption('B', options);
+	    if (bottomRangeString.length() != 0) {
+	      setBottomRange((Integer.parseInt(bottomRangeString)));
+	    } else {
+	    	setBottomRange(5);
+	    }
+		    
+		    if (getInputFormat() != null)
+		        setInputFormat(getInputFormat());
+	  }
+
+	public String[] getOptions(){
+		 Vector<String> result = new Vector<String>();
+	    String[] options = super.getOptions();
+	    for (int i = 0; i < options.length; i++) {
+	      result.add(options[i]);
+	    }
+
+	    result.add("-F");
+	    result.add("" + getNumberofFolds());
+	    result.add("-T");
+	    result.add("" + getTopRange());
+	    result.add("-B");
+	    result.add("" + getBottomRange());
+	    
+	    return result.toArray(new String[result.size()]);
+	}
+	 
+	public int getNumberofFolds() {
+		return m_folds;
+	}
+	
+	public void setNumberofFolds(int folds) {
+		m_folds = folds;
+	  }
+	
+	public String numberofFoldsTipText(){
+		return "The Number of Folds which are used for Cross-Validation";
+	}
+	
+	public int getTopRange() {
+		return m_toprange;
+	}
+	
+	public void setTopRange(int toprange) {
+		m_toprange = toprange;
+		
+	}
+	
+	public String TopRangeTipText(){
+		return "The Number of topattributes taken for Ranking";
+	}
+	
+	public int getBottomRange() {
+		return m_bottomrange;
+	}
+	
+	public void setBottomRange(int bottomrange) {
+		m_bottomrange = bottomrange;
+		
+	}
+	
+	public String BottomRangeTipText(){
+		return "The Number of bottomattributes taken for Ranking";
+	}
+
 	public Capabilities getCapabilities(){
 		Capabilities result = super.getCapabilities();
 		result.enableAllAttributes();
 		result.enableAllClasses(); //// filter doesn't need class to be set//
 	    return result;
 	}
-	 
+	
 	protected Instances determineOutputFormat(Instances inputFormat) {
 		 Instances result = new Instances(inputFormat);	//output format same like input without any new attributes, all instances copied
 		 return result;
 	 }
 	 
-	 protected Instances process(Instances inst) throws Exception {
+	protected Instances process(Instances inst) throws Exception {
 		 Instances result = new Instances(determineOutputFormat(inst), 0);
 	     for (int i = 0; i < inst.numInstances(); i++) {
 	       double[] values = new double[result.numAttributes()];
@@ -113,7 +212,7 @@ public class CM_1 extends SimpleBatchFilter{
 	     return finalresult;
 	 }
 
-	 public void createFolds(Instances inputdata) throws Exception{
+	public void createFolds(Instances inputdata) throws Exception{
 		 StratifiedRemoveFolds remove = new StratifiedRemoveFolds();    	// new instance of filter
 		 remove.setNumFolds(m_folds);  											// set options, folds defined by user
 		 remove.setSeed(1);
@@ -123,20 +222,20 @@ public class CM_1 extends SimpleBatchFilter{
 			 remove.setFold(i);
 			 remove.setInputFormat(inputdata);                          		// inform filter about dataset **AFTER** setting options
 			 Instances newData = Filter.useFilter(inputdata, remove);		 	// apply filter
-//			 CSVSaver saver = new CSVSaver();
-//			 saver.setInstances(newData);
-//			 saver.setFile(new File("./test" + i + ".csv"));
-//			 saver.writeBatch();
+	//			 CSVSaver saver = new CSVSaver();
+	//			 saver.setInstances(newData);
+	//			 saver.setFile(new File("./test" + i + ".csv"));
+	//			 saver.writeBatch();
 			 applyCM_1(newData);
 		 }
 		 
 		 //get Ranking from all folds and if flag set compute json
-
+	
 		 Map<String, Double> sortedbyRanking = sortByValues(RankingSums); 
 		 writeRankingtoFile(sortedbyRanking);
 	 }
 	 
-	 public void applyCM_1(Instances mergedFolds) throws IOException{
+	public void applyCM_1(Instances mergedFolds) throws IOException{
 		 
 		 double wantedClass = 1.0;												//class value as double, if there are three different classes the values are 0.0, 1.0 and 2.0
 		 
@@ -174,24 +273,15 @@ public class CM_1 extends SimpleBatchFilter{
 				 	}
 				 
 			 	}
-//			 
-//			 System.out.println("Min: "+ min );
-//			 System.out.println("Max: "+ max);
-//			 System.out.println("SumClass: "+ sum_specificClass);
-//			 System.out.println("SumOther: "+ sum_otherClasses);
-//			 System.out.println("NumClasses: "+ num_specificClass);
-//			 System.out.println("NumOther: "+ num_otherClasses);
-//			
-//			 System.out.println("Wanted Class: "+mergedFolds.classAttribute().value(1));
 			 
 			 double CM_1Score = ((sum_specificClass/num_specificClass) - (sum_otherClasses/num_otherClasses))/(1+(max-min));
-//			 System.out.println("CM_1 Score for attribute: " +mergedFolds.attribute(attribute).toString() + " -> "+ CM_1Score);
+	//			 System.out.println("CM_1 Score for attribute: " +mergedFolds.attribute(attribute).toString() + " -> "+ CM_1Score);
 			 CM_1Scores.put(mergedFolds.attribute(attribute).name(), CM_1Score); // put CM_1 score for each colum of attribute
 	 		} //all attributes computed
 		 compute_Ranking(CM_1Scores);
 		 }
 	 
-	 public void compute_Ranking(Map<String, Double> CM_1Scores) throws IOException{
+	public void compute_Ranking(Map<String, Double> CM_1Scores) throws IOException{
 		 
 		 Map<String, Double> sorted = sortByValues(CM_1Scores);
 		 List<String> sortedAsArray = new ArrayList<String>(sorted.keySet());		//convert Keys to array, CM_1 scores no longer needed
@@ -205,7 +295,7 @@ public class CM_1 extends SimpleBatchFilter{
 		 }
 	 }
 	 
-	 public Instances adjustInstances( Instances input) throws Exception{
+	public Instances adjustInstances( Instances input) throws Exception{
 		 System.out.println(rangedRankings);
 		 String IndicesToBeRemoved = "";
 		 for (int i = 0; i < input.numAttributes(); i++) {
@@ -225,25 +315,24 @@ public class CM_1 extends SimpleBatchFilter{
 		 return input;
 	}
 		 
-		
-	 public void writeRankingtoFile (Map<String, Double> sortedbyRanking) throws IOException{
+	public void writeRankingtoFile (Map<String, Double> sortedbyRanking) throws IOException{
 		 
 		 int index = 1;
 		 String jsontopattributes = "[{\"key\": \"topattributes\", \"color\": \"#d62728\"  , \"values\": [";
 		 String jsonleastattributes = "{\"key\": \"bottomattributes\", \"color\": \"#1f77b4\",  \"values\": [";
 		 
 		  for (Map.Entry pairs : sortedbyRanking.entrySet()) {
-		        if(index < bottomrange)
+		        if(index < m_bottomrange)
 		        {
 		        	jsonleastattributes = jsonleastattributes + "{ \"label\" : " + "\"" + pairs.getKey().toString() + "\"" + ", \"value\": " +  pairs.getValue().toString() + "} , ";
 		        	rangedRankings.put(pairs.getKey().toString(), (Double) pairs.getValue());
 		        }
-		        if(index == bottomrange)
+		        if(index == m_bottomrange)
 		        {
 		        	jsonleastattributes = jsonleastattributes + "{ \"label\" : " + "\"" + pairs.getKey().toString() + "\"" + ", \"value\": " +  pairs.getValue().toString() + "}]}]";
 		        	rangedRankings.put(pairs.getKey().toString(), (Double) pairs.getValue());
 		        }
-		        if (index > sortedbyRanking.size() - toprange)
+		        if (index > sortedbyRanking.size() - m_toprange)
 		        {
 		        	jsontopattributes = jsontopattributes + "{ \"label\" : " + "\"" + pairs.getKey().toString() + "\"" + ", \"value\": " +  pairs.getValue().toString() + "} , ";
 		        	rangedRankings.put(pairs.getKey().toString(), (Double) pairs.getValue());
@@ -266,18 +355,18 @@ public class CM_1 extends SimpleBatchFilter{
 				file.write(finaljson);
 				file.flush();
 				file.close();
-
+	
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-
+	
 	 }
 		 
-	 public static <K extends Comparable,V extends Comparable> Map<K,V> sortByValues(Map<K,V> map){
+	public static <K extends Comparable,V extends Comparable> Map<K,V> sortByValues(Map<K,V> map){
 	        List<Map.Entry<K,V>> entries = new LinkedList<Map.Entry<K,V>>(map.entrySet());
 	      
 	        Collections.sort(entries, new Comparator<Map.Entry<K,V>>() {
-
+	
 	            @Override
 	            public int compare(Entry<K, V> o1, Entry<K, V> o2) {
 	                return o2.getValue().compareTo(o1.getValue());
@@ -295,8 +384,7 @@ public class CM_1 extends SimpleBatchFilter{
 	        return sortedMap;
 	    }
 	 
-	 
-	 public static void main(String[] args) {
+	public static void main(String[] args) {
 		 runFilter(new CM_1(), args);
 	 }
 	
