@@ -34,7 +34,7 @@ public class CM_1 extends SimpleBatchFilter{
 	protected int m_folds;
 	private int m_toprange;
 	private int m_bottomrange;
-	private int m_targetclass = 1;
+	public String m_targetclass = "first occuring";
 	private Map<String, Double> RankingSums;
 	private Map<String, Double> rangedRankings;
 	private boolean m_graphcomputed;
@@ -80,6 +80,7 @@ public class CM_1 extends SimpleBatchFilter{
 	    
 	    result.addElement(new Option("\tThe target Class (default: 1).\n",
 		        "-C", 1, "-C <int>"));
+
 	    
 	    return result.elements();
 	  }
@@ -109,10 +110,10 @@ public class CM_1 extends SimpleBatchFilter{
 	    
 	    String targetClassString = Utils.getOption('C', options);
 	    if (targetClassString.length() != 0) {
-		      setTargetClass(Integer.parseInt(targetClassString));
+		      setTargetClass(targetClassString);
 		    }
 	    else {
-	    	setTargetClass(1);
+	    	setTargetClass("first occuring");
 	    }
 	    String graphComputedString = Utils.getOption('G', options);
 	    if (graphComputedString.length() != 0) {
@@ -145,6 +146,7 @@ public class CM_1 extends SimpleBatchFilter{
 	    result.add("" + getTargetClass());
 	    result.add("-G");
 	    result.add("" + isGraphComputed());
+	    
 	    
 	    
 	    return result.toArray(new String[result.size()]);
@@ -200,11 +202,11 @@ public class CM_1 extends SimpleBatchFilter{
 		return "The Number of bottomattributes taken for Ranking";
 	}
 
-	public int getTargetClass(){
+	public String getTargetClass(){
 		return m_targetclass;
 	}
 	
-	public void setTargetClass(int targetclass) {
+	public void setTargetClass(String targetclass) {
 		m_targetclass = targetclass;
 	  }
 	
@@ -230,7 +232,7 @@ public class CM_1 extends SimpleBatchFilter{
 	       double[] values = new double[result.numAttributes()];
 	       for (int n = 0; n < inst.numAttributes(); n++)
 	         values[n] = inst.instance(i).value(n);
-	       result.add(new DenseInstance(1, values)); //denseinstance able to store every value, not only numerical
+	       result.add(new DenseInstance(1, values));
 	     }
 	     setInputFormat(result);
 	     createFolds(result);
@@ -244,23 +246,23 @@ public class CM_1 extends SimpleBatchFilter{
 	 }
 
 	public void createFolds(Instances inputdata) throws Exception{
-		 StratifiedRemoveFolds remove = new StratifiedRemoveFolds();    	// new instance of filter
-		 remove.setNumFolds(m_folds);  											// set options, folds defined by user
+		 StratifiedRemoveFolds remove = new StratifiedRemoveFolds();
+		 remove.setNumFolds(m_folds); 
 		 remove.setSeed(1);
-		 remove.setInvertSelection(true);									//divide in n-folds and get the first until n-1 fold to compute CM_1 score 
+		 remove.setInvertSelection(true);									//divide in n-folds and invert to get only one fold at a time
 		 
 		 for(int i = 1; i <= m_folds; i++){
 			 remove.setFold(i);
-			 remove.setInputFormat(inputdata);                          		// inform filter about dataset **AFTER** setting options
-			 Instances modifiedData = Filter.useFilter(inputdata, remove);		 	// apply filter
+			 remove.setInputFormat(inputdata); 
+			 Instances modifiedData = Filter.useFilter(inputdata, remove);
 			 
 			 computeCM1(modifiedData);
 		 }
 	 }
 	 
-	public void computeCM1(Instances mergedFolds) throws IOException{
+	public void computeCM1(Instances fold) throws IOException{
 		 
-		 int numAttributes = mergedFolds.numAttributes();
+		 int numAttributes = fold.numAttributes();
 		 int num_specificClass = 0;
 		 int num_otherClasses = 0;
 		 double min = -1.0;														//initialize with -1 making the assumption that there are only positive values in the dataset
@@ -269,22 +271,28 @@ public class CM_1 extends SimpleBatchFilter{
 		 double sum_specificClass = 0.0;											
 		 double sum_otherClasses = 0.0;	
 		 
-		 Map<String, Double> CM_1Scores = new HashMap<String, Double>();		//create a HashMap to store the CM_1 Score for each fold
+		 Map<String, Double> CM_1Scores = new HashMap<String, Double>();
 		 
-		 int instances = mergedFolds.numInstances();									//get the number of instances  in each fold
+		 int instances = fold.numInstances();
 		 
 		 for(int attribute = 0; attribute < numAttributes-1; attribute++){		//get sum for each attribute column
 			 
 			 for(int instance = 0 ; instance < instances; instance++){			//for each instance get the data
-				 Instance inst = mergedFolds.get(instance);
+				 Instance inst = fold.get(instance);
+				 double value = inst.value(attribute);
+				 
+				 
+				 if(m_targetclass.equals("first occuring")){
+					 m_targetclass = inst.classAttribute().value(0);
+				 }//if no class was choosen the first occuring is choosen
+				 
+				 if((inst.classAttribute().value((int)inst.classValue())).equals(m_targetclass)){
 
-				 if(inst.classValue() == (double) m_targetclass - 1.0){								// zero based index of values, but input > 0
-					 sum_specificClass= sum_specificClass + inst.value(attribute);						//add attributes value to sum array
+					 sum_specificClass= sum_specificClass + value;										//add attributes value to sum array
 					 num_specificClass++;
 
 				 }
 				 else{
-					 double value = inst.value(attribute);
 					 sum_otherClasses  = sum_otherClasses + value;
 				 	 num_otherClasses++;
 				 	 
@@ -297,7 +305,7 @@ public class CM_1 extends SimpleBatchFilter{
 			 	}
 			 
 			 double CM_1Score = ((sum_specificClass/num_specificClass) - (sum_otherClasses/num_otherClasses))/(1+(max-min));
-			 CM_1Scores.put(mergedFolds.attribute(attribute).name(), CM_1Score); // put CM_1 score for each column of attribute
+			 CM_1Scores.put(fold.attribute(attribute).name(), CM_1Score); // put CM_1 score for each column of attribute
 	 		} //all attributes computed
 		 compute_Ranking(CM_1Scores);
 		 }
@@ -319,14 +327,12 @@ public class CM_1 extends SimpleBatchFilter{
 	 
 	public Instances adjustInstances( Instances input) throws Exception{
 		 String IndicesToBeRemoved = "";
-		 System.out.println("Ranged Rankings: " + rangedRankings);
 		 for (int i = 0; i < input.numAttributes(); i++) {
 		      Attribute att = input.attribute(i);
 		      if(!(rangedRankings.containsKey(att.name())) && att.index()!= input.classIndex()){
 		    	  IndicesToBeRemoved += String.valueOf(i+1) + ",";
 		      }
 		 }
-		 System.out.println("Indices to be removed: " + IndicesToBeRemoved);
 		 if(!IndicesToBeRemoved.isEmpty()){
 			 IndicesToBeRemoved = IndicesToBeRemoved.substring(0, IndicesToBeRemoved.length() - 1); //remove additional comma at end
 			 Remove remove = new Remove();
@@ -339,30 +345,45 @@ public class CM_1 extends SimpleBatchFilter{
 	}
 		 
 	public void applyRangesandComputeJSON (Map<String, Double> sortedbyRanking) throws IOException{
-		 
+		 sortedbyRanking = sortByValues(sortedbyRanking);
 		 int index = 1;
 		 String jsontopattributes = "[{\"key\": \"topattributes\", \"color\": \"#d62728\"  , \"values\": [";
-		 String jsonleastattributes = "{\"key\": \"bottomattributes\", \"color\": \"#1f77b4\",  \"values\": [";
+		 String jsonleastattributes = "{\"key\": \"bottomattributes\", \"color\": \"#2ca02c\",  \"values\": [";
+		 String jsonmiddleattributes = "{\"key\": \"middleattributes\", \"color\": \"#1f77b4\",  \"values\": [";
+		 
+		 //instead of plotting summed up value, now showing the ranks. Means length of map - index
 		 
 		  for (Map.Entry pairs : sortedbyRanking.entrySet()) {
 		        if(index < m_bottomrange)
 		        {
-		        	jsonleastattributes = jsonleastattributes + "{ \"label\" : " + "\"" + pairs.getKey().toString() + "\"" + ", \"value\": " +  pairs.getValue().toString() + "} , ";	
+		        	jsonleastattributes = jsonleastattributes + "{ \"label\" : " + "\"" + pairs.getKey().toString() + "\"" + ", \"value\": " +  (sortedbyRanking.size() - index) + "} , ";	
 					rangedRankings.put(pairs.getKey().toString(), (Double) pairs.getValue());
 		        }
 		        if(index == m_bottomrange)
 		        {
-		        	jsonleastattributes = jsonleastattributes + "{ \"label\" : " + "\"" + pairs.getKey().toString() + "\"" + ", \"value\": " +  pairs.getValue().toString() + "}]}]";
+		        	jsonleastattributes = jsonleastattributes + "{ \"label\" : " + "\"" + pairs.getKey().toString() + "\"" + ", \"value\": " +  (sortedbyRanking.size() - index) + "}]}]";
 					rangedRankings.put(pairs.getKey().toString(), (Double) pairs.getValue());
 		        }
+		        
+		        
+		        if(index > m_bottomrange && index < sortedbyRanking.size() - m_toprange -1 )
+		        {
+		        	jsonmiddleattributes = jsonmiddleattributes + "{ \"label\" : " + "\"" + pairs.getKey().toString() + "\"" + ", \"value\": " +  (sortedbyRanking.size() - index) + "} , ";
+		        }
+		        if(index ==sortedbyRanking.size() - m_toprange-1)
+		        {
+		        	jsonmiddleattributes = jsonmiddleattributes + "{ \"label\" : " + "\"" + pairs.getKey().toString() + "\"" + ", \"value\": " +  (sortedbyRanking.size() - index) + "}]},";
+		        }
+		        
+		        
 		        if (index > sortedbyRanking.size() - m_toprange)
 		        {
-		        	jsontopattributes = jsontopattributes + "{ \"label\" : " + "\"" + pairs.getKey().toString() + "\"" + ", \"value\": " +  pairs.getValue().toString() + "} , ";
+		        	jsontopattributes = jsontopattributes + "{ \"label\" : " + "\"" + pairs.getKey().toString() + "\"" + ", \"value\": " +  (sortedbyRanking.size() - index) + "} , ";
 					rangedRankings.put(pairs.getKey().toString(), (Double) pairs.getValue());
 		        }
 		        if(index == sortedbyRanking.size())
 		        {
-		        	jsontopattributes = jsontopattributes + "{ \"label\" : " + "\"" + pairs.getKey().toString() + "\"" + ", \"value\": " +  pairs.getValue().toString() + "}]},";
+		        	jsontopattributes = jsontopattributes + "{ \"label\" : " + "\"" + pairs.getKey().toString() + "\"" + ", \"value\": " +  (sortedbyRanking.size() - index) + "}]},";
 					rangedRankings.put(pairs.getKey().toString(), (Double) pairs.getValue());
 		        }
 		        index++;
@@ -371,7 +392,7 @@ public class CM_1 extends SimpleBatchFilter{
 		  
 		  //use Json to compute Graph if user set the option
 		  if(isGraphComputed()){
-			  String finaljson = "CM_1data = " + jsontopattributes + jsonleastattributes;
+			  String finaljson = "CM_1data = " + jsontopattributes + jsonmiddleattributes + jsonleastattributes;
 			  try {
 				  generateGraph(finaljson);
 			  } catch (IOException e) {
@@ -383,7 +404,7 @@ public class CM_1 extends SimpleBatchFilter{
 				  
 		  }
 	
-	 private void generateGraph(String finaljson) throws IOException {
+	private void generateGraph(String finaljson) throws IOException {
 			  
 		 FileWriter file = new FileWriter("CM1.json");
 		 file.write(finaljson);
@@ -393,16 +414,15 @@ public class CM_1 extends SimpleBatchFilter{
 		 String operatingSystem = System.getProperty("os.name");
 		  
 		 if(operatingSystem.startsWith("Windows"))
-			 Runtime.getRuntime().exec("cmd start index.html");
+			 Runtime.getRuntime().exec("cmd start CM1.html");
 		 if(operatingSystem.startsWith("Mac"))
-			 Runtime.getRuntime().exec("open index.html");
+			 Runtime.getRuntime().exec("open CM1.html");
 		 if(operatingSystem.startsWith("Linux")){
-			 Runtime.getRuntime().exec("xdg-open index.html");
+			 Runtime.getRuntime().exec("xdg-open CM1.html");
 		 }
 		
 	}
 
-		 
 	public static <K extends Comparable,V extends Comparable> Map<K,V> sortByValues(Map<K,V> map){
 	        List<Map.Entry<K,V>> entries = new LinkedList<Map.Entry<K,V>>(map.entrySet());
 	      
